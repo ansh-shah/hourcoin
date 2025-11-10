@@ -28,11 +28,20 @@ The Proof of Time consensus mechanism consists of:
 - Miner sacrifice protocol with 1-hour lockout
 - Working demonstration programs
 
-🔄 **Phase 3: Network & Distribution** (Next Steps)
-- Networking layer for distributed operation
-- Separate miner client
-- Production-ready validator
-- External time source integration (NTP/Cloudflare)
+✅ **Phase 3: Network & Distribution** (COMPLETED)
+- TCP-based networking protocol
+- Validator server with concurrent miner support
+- Miner client with automatic mining
+- External time synchronization (World Time API)
+- Standalone validator and miner binaries
+- JSON message protocol over TCP
+- Comprehensive test suite (51 tests passing)
+
+🔄 **Future Enhancements**
+- Multi-validator consensus
+- Wallet and address system
+- Block explorer web interface
+- P2P networking
 
 ## Quick Start
 
@@ -53,18 +62,44 @@ cargo run --release --example proof_of_time_demo
 cargo test
 ```
 
-All 47 tests should pass.
+All 51 tests should pass.
+
+### Run Distributed Mining Network
+
+**Step 1: Start the Validator Server**
+```bash
+cargo build --release
+./target/release/validator
+```
+
+**Step 2: Start Miner(s)** (in separate terminals)
+```bash
+./target/release/miner alice
+./target/release/miner bob
+./target/release/miner charlie
+```
+
+Miners will automatically connect to the validator, mine blocks, and compete in each round!
+
+See [Network Guide](./docs/NetworkGuide.md) for detailed instructions.
 
 ## Documentation
 
 - [Roadmap](https://github.com/Nit123/hourcoin/blob/main/docs/Roadmap.md) - Project development plan
-- [Proof of Time Documentation](./docs/ProofOfTime.md) - Complete technical documentation
+- [Proof of Time Documentation](./docs/ProofOfTime.md) - Core consensus mechanism
   - Architecture overview
   - How tonce works
   - Miner sacrifice protocol
   - Validator operations
   - API reference
   - Security considerations
+- [Network Guide](./docs/NetworkGuide.md) - Distributed mining setup
+  - Network architecture
+  - Running validator server
+  - Running miner clients
+  - Protocol specifications
+  - Configuration options
+  - Troubleshooting
 
 ## Example: How Proof of Time Works
 

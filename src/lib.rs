@@ -88,6 +88,10 @@ pub mod time_sync;
 pub mod tonce;
 pub mod validator;
 
+// Network modules
+pub mod network;
+
 pub use crate::time_sync::TimeSync;
 pub use crate::tonce::{TonceChallenge, find_valid_timestamp};
 pub use crate::validator::{Validator, MinerSession, ValidationResult, RoundInfo};
+pub use crate::network::{ValidatorServer, MinerClient};

@@ -13,6 +13,14 @@ path = "src/lib.rs"
 name = "blockchain"
 path = "src/main.rs"
 
+[[bin]]
+name = "validator"
+path = "src/bin/validator.rs"
+
+[[bin]]
+name = "miner"
+path = "src/bin/miner.rs"
+
 [dependencies]
 hex = "0.4.3"
 crypto-hash = "0.3.4"

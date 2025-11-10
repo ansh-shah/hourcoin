@@ -47,23 +47,69 @@ impl TimeSync {
         duration.as_secs() as u128 * 1000 + duration.subsec_millis() as u128
     }
 
-    /// Sync with external time source (stub for now - can be implemented with actual HTTP calls)
+    /// Sync with external time source
     ///
-    /// In production, this would query Cloudflare's time API or use NTP protocol
-    /// For now, it returns system time as a placeholder
+    /// Queries world time API for accurate external time
+    /// Falls back to system time if external source is unavailable
     pub async fn sync_with_external_source(&mut self) -> Result<TrustedTime, String> {
-        // TODO: Implement actual external time source query
-        // This could use Cloudflare's time API: https://cloudflare.com/time
-        // Or use NTP protocol to query time.cloudflare.com
+        // Try to get time from external source
+        match Self::fetch_external_time().await {
+            Ok(trusted_time) => {
+                self.last_sync_time = Some(trusted_time.timestamp_ms);
+                Ok(trusted_time)
+            }
+            Err(e) => {
+                // Fall back to system time
+                eprintln!("Warning: External time sync failed ({}), using system time", e);
+                let timestamp = Self::get_system_time();
+                let trusted_time = TrustedTime {
+                    timestamp_ms: timestamp,
+                    source: "system".to_string(),
+                };
+                self.last_sync_time = Some(timestamp);
+                Ok(trusted_time)
+            }
+        }
+    }
 
-        let timestamp = Self::get_system_time();
-        let trusted_time = TrustedTime {
-            timestamp_ms: timestamp,
-            source: "system".to_string(),
-        };
+    /// Fetch time from external source (World Time API)
+    async fn fetch_external_time() -> Result<TrustedTime, String> {
+        // Use World Time API as it's simple and doesn't require authentication
+        // Alternative: http://worldtimeapi.org/api/timezone/Etc/UTC
+        let url = "http://worldtimeapi.org/api/timezone/Etc/UTC";
 
-        self.last_sync_time = Some(timestamp);
-        Ok(trusted_time)
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+            .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+        let response = client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to fetch time: {}", e))?;
+
+        if !response.status().is_success() {
+            return Err(format!("HTTP error: {}", response.status()));
+        }
+
+        let json: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+        // Extract unixtime in seconds
+        let unixtime_secs = json["unixtime"]
+            .as_i64()
+            .ok_or("Missing unixtime field")?;
+
+        // Convert to milliseconds
+        let timestamp_ms = (unixtime_secs as u128) * 1000;
+
+        Ok(TrustedTime {
+            timestamp_ms,
+            source: "worldtimeapi.org".to_string(),
+        })
     }
 
     /// Validate a timestamp against trusted time
