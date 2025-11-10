@@ -140,7 +140,243 @@ impl Blockchain {
 		}
 
 		self.blocks.push(block);
-		
+
 		Ok(())
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::transaction::{Transaction, Output};
+	use crate::now;
+
+	fn create_coinbase_transaction(value: f64, to_addr: &str, timestamp: u128) -> Transaction {
+		Transaction {
+			inputs: vec![],
+			outputs: vec![Output {
+				to_addr: to_addr.to_owned(),
+				value,
+				timestamp,
+			}],
+		}
+	}
+
+	#[test]
+	fn test_blockchain_creation() {
+		let blockchain = Blockchain::new();
+		assert_eq!(blockchain.blocks.len(), 0);
+		assert_eq!(blockchain.get_difficulty(), 23);
+	}
+
+	#[test]
+	fn test_blockchain_with_custom_difficulty() {
+		let custom_diff = 0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+		let blockchain = Blockchain::new_with_diff(custom_diff);
+		assert_eq!(blockchain.get_difficulty(), custom_diff);
+	}
+
+	#[test]
+	fn test_add_genesis_block() {
+		let difficulty = 0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+		let mut blockchain = Blockchain::new_with_diff(difficulty);
+
+		let mut genesis_block = Block::new(
+			0,
+			now(),
+			vec![0; 32],
+			vec![create_coinbase_transaction(2.0, "Alice", now())],
+		);
+		genesis_block.mine(difficulty);
+
+		assert!(blockchain.update_with_block(genesis_block).is_ok());
+		assert_eq!(blockchain.blocks.len(), 1);
+	}
+
+	#[test]
+	fn test_invalid_genesis_block_prev_hash() {
+		let difficulty = 0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+		let mut blockchain = Blockchain::new_with_diff(difficulty);
+
+		let mut genesis_block = Block::new(
+			0,
+			now(),
+			vec![1; 32], // Invalid prev hash - should be all zeros
+			vec![create_coinbase_transaction(2.0, "Alice", now())],
+		);
+		genesis_block.mine(difficulty);
+
+		assert!(matches!(
+			blockchain.update_with_block(genesis_block),
+			Err(BlockValidationErr::InvalidGenesisBlockFormat)
+		));
+	}
+
+	#[test]
+	fn test_add_second_block() {
+		let difficulty = 0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+		let mut blockchain = Blockchain::new_with_diff(difficulty);
+
+		let timestamp1 = now();
+		let mut genesis_block = Block::new(
+			0,
+			timestamp1,
+			vec![0; 32],
+			vec![create_coinbase_transaction(2.0, "Alice", timestamp1)],
+		);
+		genesis_block.mine(difficulty);
+		let genesis_hash = genesis_block.hash.clone();
+		blockchain.update_with_block(genesis_block).unwrap();
+
+		// Add second block
+		let timestamp2 = timestamp1 + 1000; // Must be later than genesis
+		let mut block2 = Block::new(
+			1,
+			timestamp2,
+			genesis_hash,
+			vec![create_coinbase_transaction(2.0, "Bob", timestamp2)],
+		);
+		block2.mine(difficulty);
+
+		assert!(blockchain.update_with_block(block2).is_ok());
+		assert_eq!(blockchain.blocks.len(), 2);
+	}
+
+	#[test]
+	fn test_mismatched_index() {
+		let difficulty = 0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+		let mut blockchain = Blockchain::new_with_diff(difficulty);
+
+		let mut genesis_block = Block::new(
+			0,
+			now(),
+			vec![0; 32],
+			vec![create_coinbase_transaction(2.0, "Alice", now())],
+		);
+		genesis_block.mine(difficulty);
+		let genesis_hash = genesis_block.hash.clone();
+		blockchain.update_with_block(genesis_block).unwrap();
+
+		// Try to add block with wrong index
+		let mut block2 = Block::new(
+			5, // Wrong index - should be 1
+			now(),
+			genesis_hash,
+			vec![create_coinbase_transaction(2.0, "Bob", now())],
+		);
+		block2.mine(difficulty);
+
+		assert!(matches!(
+			blockchain.update_with_block(block2),
+			Err(BlockValidationErr::MismatchedIndex)
+		));
+	}
+
+	#[test]
+	fn test_achronological_timestamp() {
+		let difficulty = 0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+		let mut blockchain = Blockchain::new_with_diff(difficulty);
+
+		let timestamp = now();
+		let mut genesis_block = Block::new(
+			0,
+			timestamp,
+			vec![0; 32],
+			vec![create_coinbase_transaction(2.0, "Alice", timestamp)],
+		);
+		genesis_block.mine(difficulty);
+		let genesis_hash = genesis_block.hash.clone();
+		blockchain.update_with_block(genesis_block).unwrap();
+
+		// Try to add block with earlier timestamp
+		let mut block2 = Block::new(
+			1,
+			timestamp - 1000, // Earlier timestamp - should fail
+			genesis_hash,
+			vec![create_coinbase_transaction(2.0, "Bob", timestamp)],
+		);
+		block2.mine(difficulty);
+
+		assert!(matches!(
+			blockchain.update_with_block(block2),
+			Err(BlockValidationErr::AchronologicalTimestamp)
+		));
+	}
+
+	#[test]
+	fn test_invalid_coinbase_transaction() {
+		let difficulty = 0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+		let mut blockchain = Blockchain::new_with_diff(difficulty);
+
+		// Genesis block with non-coinbase transaction (wrong value)
+		let mut genesis_block = Block::new(
+			0,
+			now(),
+			vec![0; 32],
+			vec![create_coinbase_transaction(5.0, "Alice", now())], // Wrong value
+		);
+		genesis_block.mine(difficulty);
+
+		assert!(matches!(
+			blockchain.update_with_block(genesis_block),
+			Err(BlockValidationErr::InvalidCoinbaseTransaction)
+		));
+	}
+
+	#[test]
+	fn test_transaction_timestamp_validation() {
+		let difficulty = 0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+		let mut blockchain = Blockchain::new_with_diff(difficulty);
+
+		let timestamp = 1000;
+		let mut genesis_block = Block::new(
+			0,
+			timestamp,
+			vec![0; 32],
+			vec![create_coinbase_transaction(2.0, "Alice", timestamp)],
+		);
+		genesis_block.mine(difficulty);
+		let genesis_hash = genesis_block.hash.clone();
+		let first_output = genesis_block.transactions[0].outputs[0].clone();
+		blockchain.update_with_block(genesis_block).unwrap();
+
+		// Try to create transaction with output timestamp before input timestamp
+		let mut block2 = Block::new(
+			1,
+			timestamp + 1000,
+			genesis_hash,
+			vec![
+				create_coinbase_transaction(2.0, "Miner", timestamp + 1000),
+				Transaction {
+					inputs: vec![first_output.clone()], // timestamp: 1000
+					outputs: vec![Output {
+						to_addr: "Bob".to_owned(),
+						value: 1.5,
+						timestamp: 500, // Before input timestamp - should fail
+					}],
+				},
+			],
+		);
+		block2.mine(difficulty);
+
+		assert!(matches!(
+			blockchain.update_with_block(block2),
+			Err(BlockValidationErr::InvalidTransactionTimestamp)
+		));
+	}
+
+	#[test]
+	fn test_difficulty_update() {
+		let mut blockchain = Blockchain::new_with_diff(100);
+
+		// Can reduce difficulty
+		assert!(blockchain.update_difficulty(50).is_ok());
+		assert_eq!(blockchain.get_difficulty(), 50);
+
+		// Cannot increase difficulty
+		assert!(matches!(
+			blockchain.update_difficulty(100),
+			Err(BlockValidationErr::InvalidDifficultyUpdate)
+		));
 	}
 }

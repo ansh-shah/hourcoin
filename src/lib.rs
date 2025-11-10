@@ -82,3 +82,12 @@ mod blockchain;
 pub use crate::blockchain::Blockchain;
 pub mod transaction;
 pub use crate::transaction::Transaction;
+
+// Proof of Time modules
+pub mod time_sync;
+pub mod tonce;
+pub mod validator;
+
+pub use crate::time_sync::TimeSync;
+pub use crate::tonce::{TonceChallenge, find_valid_timestamp};
+pub use crate::validator::{Validator, MinerSession, ValidationResult, RoundInfo};
