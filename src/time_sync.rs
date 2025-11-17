@@ -8,14 +8,22 @@
 ///
 /// Uses chrono for platform-agnostic time handling with consistent millisecond precision
 /// across all platforms.
+///
+/// Implements leap second handling using TAI (International Atomic Time) which is
+/// monotonically increasing and does not have leap seconds, preventing:
+/// - Time going backwards during leap seconds
+/// - Duplicate timestamps
+/// - Consensus disagreements between nodes
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use crate::leap_seconds::{now_tai_millis, utc_to_tai_millis};
 
 /// Represents a trusted time response from an external source
+/// Timestamps are in TAI (International Atomic Time) to handle leap seconds properly
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrustedTime {
-    pub timestamp_ms: u128,
+    pub timestamp_ms: u128, // TAI milliseconds
     pub source: String,
 }
 
@@ -44,10 +52,11 @@ impl TimeSync {
         }
     }
 
-    /// Get current system time in milliseconds since UNIX epoch
-    /// Uses chrono for platform-agnostic precision
+    /// Get current system time in TAI milliseconds since UNIX epoch
+    /// Uses TAI (International Atomic Time) for leap-second-safe timing
+    /// Platform-agnostic precision via chrono
     pub fn get_system_time() -> u128 {
-        Utc::now().timestamp_millis() as u128
+        now_tai_millis() as u128
     }
 
     /// Sync with external time source
@@ -101,16 +110,19 @@ impl TimeSync {
             .await
             .map_err(|e| format!("Failed to parse response: {}", e))?;
 
-        // Extract unixtime in seconds
+        // Extract unixtime in seconds (this is UTC)
         let unixtime_secs = json["unixtime"]
             .as_i64()
             .ok_or("Missing unixtime field")?;
 
-        // Convert to milliseconds
-        let timestamp_ms = (unixtime_secs as u128) * 1000;
+        // Convert UTC to milliseconds
+        let utc_timestamp_ms = unixtime_secs * 1000;
+
+        // Convert UTC to TAI to handle leap seconds properly
+        let tai_timestamp_ms = utc_to_tai_millis(utc_timestamp_ms);
 
         Ok(TrustedTime {
-            timestamp_ms,
+            timestamp_ms: tai_timestamp_ms as u128,
             source: "worldtimeapi.org".to_string(),
         })
     }

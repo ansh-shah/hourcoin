@@ -3,9 +3,26 @@ type Address = String;
 
 use chrono::Utc;
 
-/// Get current time in milliseconds since UNIX epoch
-/// Uses chrono for platform-agnostic precision
+pub mod leap_seconds;
+pub use leap_seconds::{now_tai_millis, utc_to_tai_millis, tai_to_utc_millis, is_near_leap_second};
+
+/// Get current time in TAI milliseconds since UNIX epoch
+///
+/// Uses TAI (International Atomic Time) which is monotonically increasing
+/// and does not have leap seconds, ensuring:
+/// - Time never goes backwards
+/// - No duplicate timestamps
+/// - Consistent consensus across nodes
+/// - Platform-agnostic precision via chrono
+///
+/// TAI is currently 37 seconds ahead of UTC (as of 2017-01-01 leap second)
 pub fn now() -> u128 {
+	now_tai_millis() as u128
+}
+
+/// Get current UTC time in milliseconds (for display/logging purposes)
+/// For consensus-critical timing, use now() which returns TAI
+pub fn now_utc() -> u128 {
 	Utc::now().timestamp_millis() as u128
 }
 

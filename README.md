@@ -100,6 +100,12 @@ See [Network Guide](./docs/NetworkGuide.md) for detailed instructions.
   - Protocol specifications
   - Configuration options
   - Troubleshooting
+- [Leap Second Handling](./docs/LeapSeconds.md) - Time precision and consensus
+  - TAI (International Atomic Time) implementation
+  - Why leap seconds matter for blockchain
+  - Leap second table and updates
+  - Platform-independent timing
+  - Testing and validation
 
 ## Example: How Proof of Time Works
 
