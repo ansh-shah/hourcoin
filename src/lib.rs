@@ -1,11 +1,12 @@
 type BlockHash = Vec<u8>;
 type Address = String;
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use chrono::Utc;
 
+/// Get current time in milliseconds since UNIX epoch
+/// Uses chrono for platform-agnostic precision
 pub fn now() -> u128 {
-	let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-	duration.as_secs() as u128 * 1000 + duration.subsec_millis() as u128
+	Utc::now().timestamp_millis() as u128
 }
 
 pub fn u32_bytes (u: &u32) -> [u8; 4] {

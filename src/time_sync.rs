@@ -5,8 +5,11 @@
 ///
 /// The proof of time consensus requires miners to submit blocks with accurate timestamps
 /// that are validated against a trusted time source within a tolerance window.
+///
+/// Uses chrono for platform-agnostic time handling with consistent millisecond precision
+/// across all platforms.
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 /// Represents a trusted time response from an external source
@@ -42,9 +45,9 @@ impl TimeSync {
     }
 
     /// Get current system time in milliseconds since UNIX epoch
+    /// Uses chrono for platform-agnostic precision
     pub fn get_system_time() -> u128 {
-        let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-        duration.as_secs() as u128 * 1000 + duration.subsec_millis() as u128
+        Utc::now().timestamp_millis() as u128
     }
 
     /// Sync with external time source
