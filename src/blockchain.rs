@@ -140,7 +140,457 @@ impl Blockchain {
 		}
 
 		self.blocks.push(block);
-		
+
 		Ok(())
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::transaction::Output;
+
+	fn create_output(addr: &str, value: f64, timestamp: u128) -> Output {
+		Output {
+			to_addr: addr.to_string(),
+			value,
+			timestamp,
+		}
+	}
+
+	#[test]
+	fn test_blockchain_creation() {
+		let blockchain = Blockchain::new();
+		assert_eq!(blockchain.blocks.len(), 0);
+		assert_eq!(blockchain.get_difficulty(), 23);
+	}
+
+	#[test]
+	fn test_blockchain_creation_with_difficulty() {
+		let blockchain = Blockchain::new_with_diff(100);
+		assert_eq!(blockchain.blocks.len(), 0);
+		assert_eq!(blockchain.get_difficulty(), 100);
+	}
+
+	#[test]
+	fn test_blockchain_get_difficulty() {
+		let blockchain = Blockchain::new_with_diff(42);
+		assert_eq!(blockchain.get_difficulty(), 42);
+	}
+
+	#[test]
+	fn test_blockchain_update_difficulty_valid() {
+		let mut blockchain = Blockchain::new_with_diff(100);
+		let result = blockchain.update_difficulty(50);
+		assert!(result.is_ok());
+		assert_eq!(blockchain.get_difficulty(), 50);
+	}
+
+	#[test]
+	fn test_blockchain_update_difficulty_invalid() {
+		let mut blockchain = Blockchain::new_with_diff(100);
+		let result = blockchain.update_difficulty(150);
+		assert!(result.is_err());
+		assert_eq!(blockchain.get_difficulty(), 100); // Should remain unchanged
+	}
+
+	#[test]
+	fn test_blockchain_update_difficulty_equal() {
+		let mut blockchain = Blockchain::new_with_diff(100);
+		let result = blockchain.update_difficulty(100);
+		assert!(result.is_ok());
+		assert_eq!(blockchain.get_difficulty(), 100);
+	}
+
+	#[test]
+	fn test_blockchain_genesis_block_valid() {
+		let mut blockchain = Blockchain::new_with_diff(u128::MAX);
+
+		let coinbase = Transaction {
+			inputs: vec![],
+			outputs: vec![
+				create_output("Alice", 1.5, 1000),
+				create_output("Bob", 0.5, 1000),
+			],
+		};
+
+		let mut genesis = Block::new(0, 1000, vec![0; 32], vec![coinbase]);
+		genesis.mine(u128::MAX);
+
+		let result = blockchain.update_with_block(genesis);
+		assert!(result.is_ok());
+		assert_eq!(blockchain.blocks.len(), 1);
+	}
+
+	#[test]
+	fn test_blockchain_genesis_block_invalid_prev_hash() {
+		let mut blockchain = Blockchain::new_with_diff(u128::MAX);
+
+		let coinbase = Transaction {
+			inputs: vec![],
+			outputs: vec![
+				create_output("Alice", 1.5, 1000),
+				create_output("Bob", 0.5, 1000),
+			],
+		};
+
+		let mut genesis = Block::new(0, 1000, vec![1; 32], vec![coinbase]);
+		genesis.mine(u128::MAX);
+
+		let result = blockchain.update_with_block(genesis);
+		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_blockchain_block_mismatched_index() {
+		let mut blockchain = Blockchain::new_with_diff(u128::MAX);
+
+		let coinbase = Transaction {
+			inputs: vec![],
+			outputs: vec![
+				create_output("Alice", 1.5, 1000),
+				create_output("Bob", 0.5, 1000),
+			],
+		};
+
+		// Create block with index 1 instead of 0
+		let mut block = Block::new(1, 1000, vec![0; 32], vec![coinbase]);
+		block.mine(u128::MAX);
+
+		let result = blockchain.update_with_block(block);
+		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_blockchain_block_invalid_hash_difficulty() {
+		let mut blockchain = Blockchain::new_with_diff(1); // Very hard difficulty
+
+		let coinbase = Transaction {
+			inputs: vec![],
+			outputs: vec![
+				create_output("Alice", 1.5, 1000),
+				create_output("Bob", 0.5, 1000),
+			],
+		};
+
+		let mut genesis = Block::new(0, 1000, vec![0; 32], vec![coinbase]);
+		genesis.mine(u128::MAX); // Mine with easy difficulty
+
+		// Block won't pass the harder difficulty check
+		let result = blockchain.update_with_block(genesis);
+		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_blockchain_achronological_timestamp() {
+		let mut blockchain = Blockchain::new_with_diff(u128::MAX);
+
+		// Add genesis block
+		let coinbase1 = Transaction {
+			inputs: vec![],
+			outputs: vec![
+				create_output("Alice", 1.5, 1000),
+				create_output("Bob", 0.5, 1000),
+			],
+		};
+		let mut genesis = Block::new(0, 2000, vec![0; 32], vec![coinbase1]);
+		genesis.mine(u128::MAX);
+		blockchain.update_with_block(genesis.clone()).unwrap();
+
+		// Try to add block with earlier timestamp
+		let coinbase2 = Transaction {
+			inputs: vec![],
+			outputs: vec![
+				create_output("Charlie", 1.5, 1500),
+				create_output("Dave", 0.5, 1500),
+			],
+		};
+		let mut block2 = Block::new(1, 1500, genesis.hash.clone(), vec![coinbase2]);
+		block2.mine(u128::MAX);
+
+		let result = blockchain.update_with_block(block2);
+		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_blockchain_mismatched_previous_hash() {
+		let mut blockchain = Blockchain::new_with_diff(u128::MAX);
+
+		// Add genesis block
+		let coinbase1 = Transaction {
+			inputs: vec![],
+			outputs: vec![
+				create_output("Alice", 1.5, 1000),
+				create_output("Bob", 0.5, 1000),
+			],
+		};
+		let mut genesis = Block::new(0, 1000, vec![0; 32], vec![coinbase1]);
+		genesis.mine(u128::MAX);
+		blockchain.update_with_block(genesis.clone()).unwrap();
+
+		// Try to add block with wrong previous hash
+		let coinbase2 = Transaction {
+			inputs: vec![],
+			outputs: vec![
+				create_output("Charlie", 1.5, 2000),
+				create_output("Dave", 0.5, 2000),
+			],
+		};
+		let mut block2 = Block::new(1, 2000, vec![1; 32], vec![coinbase2]);
+		block2.mine(u128::MAX);
+
+		let result = blockchain.update_with_block(block2);
+		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_blockchain_missing_coinbase_transaction() {
+		let mut blockchain = Blockchain::new_with_diff(u128::MAX);
+
+		// Create block with no transactions
+		let mut genesis = Block::new(0, 1000, vec![0; 32], vec![]);
+		genesis.mine(u128::MAX);
+
+		let result = blockchain.update_with_block(genesis);
+		// Should succeed because split_first returns None and we skip validation
+		assert!(result.is_ok());
+	}
+
+	#[test]
+	fn test_blockchain_invalid_coinbase_transaction() {
+		let mut blockchain = Blockchain::new_with_diff(u128::MAX);
+
+		// Create coinbase with inputs (invalid)
+		let invalid_coinbase = Transaction {
+			inputs: vec![create_output("Miner", 1.0, 999)],
+			outputs: vec![
+				create_output("Alice", 1.5, 1000),
+				create_output("Bob", 0.5, 1000),
+			],
+		};
+
+		let mut genesis = Block::new(0, 1000, vec![0; 32], vec![invalid_coinbase]);
+		genesis.mine(u128::MAX);
+
+		let result = blockchain.update_with_block(genesis);
+		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_blockchain_transaction_invalid_input() {
+		let mut blockchain = Blockchain::new_with_diff(u128::MAX);
+
+		// Add genesis block
+		let coinbase = Transaction {
+			inputs: vec![],
+			outputs: vec![
+				create_output("Alice", 1.5, 1000),
+				create_output("Bob", 0.5, 1000),
+			],
+		};
+		let mut genesis = Block::new(0, 1000, vec![0; 32], vec![coinbase]);
+		genesis.mine(u128::MAX);
+		blockchain.update_with_block(genesis.clone()).unwrap();
+
+		// Try to spend an output that doesn't exist
+		let coinbase2 = Transaction {
+			inputs: vec![],
+			outputs: vec![create_output("Miner", 2.0, 2000)],
+		};
+		let fake_input = create_output("Fake", 10.0, 1500);
+		let invalid_tx = Transaction {
+			inputs: vec![fake_input],
+			outputs: vec![create_output("Charlie", 5.0, 2001)],
+		};
+		let mut block2 = Block::new(1, 2000, genesis.hash.clone(), vec![coinbase2, invalid_tx]);
+		block2.mine(u128::MAX);
+
+		let result = blockchain.update_with_block(block2);
+		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_blockchain_transaction_insufficient_input_value() {
+		let mut blockchain = Blockchain::new_with_diff(u128::MAX);
+
+		// Add genesis block
+		let coinbase = Transaction {
+			inputs: vec![],
+			outputs: vec![
+				create_output("Alice", 1.5, 1000),
+				create_output("Bob", 0.5, 1000),
+			],
+		};
+		let mut genesis = Block::new(0, 1000, vec![0; 32], vec![coinbase.clone()]);
+		genesis.mine(u128::MAX);
+		blockchain.update_with_block(genesis.clone()).unwrap();
+
+		// Try to spend more than inputs
+		let coinbase2 = Transaction {
+			inputs: vec![],
+			outputs: vec![create_output("Miner", 2.0, 2000)],
+		};
+		let alice_output = coinbase.outputs[0].clone();
+		let invalid_tx = Transaction {
+			inputs: vec![alice_output], // Only 1.5
+			outputs: vec![create_output("Charlie", 2.0, 2001)], // Trying to spend 2.0
+		};
+		let mut block2 = Block::new(1, 2000, genesis.hash.clone(), vec![coinbase2, invalid_tx]);
+		block2.mine(u128::MAX);
+
+		let result = blockchain.update_with_block(block2);
+		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_blockchain_transaction_invalid_timestamp() {
+		let mut blockchain = Blockchain::new_with_diff(u128::MAX);
+
+		// Add genesis block
+		let coinbase = Transaction {
+			inputs: vec![],
+			outputs: vec![
+				create_output("Alice", 1.5, 1000),
+				create_output("Bob", 0.5, 1000),
+			],
+		};
+		let mut genesis = Block::new(0, 1000, vec![0; 32], vec![coinbase.clone()]);
+		genesis.mine(u128::MAX);
+		blockchain.update_with_block(genesis.clone()).unwrap();
+
+		// Create transaction with output timestamp before input timestamp
+		let coinbase2 = Transaction {
+			inputs: vec![],
+			outputs: vec![create_output("Miner", 2.0, 2000)],
+		};
+		let alice_output = coinbase.outputs[0].clone(); // timestamp 1000
+		let invalid_tx = Transaction {
+			inputs: vec![alice_output],
+			outputs: vec![create_output("Charlie", 1.5, 500)], // timestamp 500 < 1000
+		};
+		let mut block2 = Block::new(1, 2000, genesis.hash.clone(), vec![coinbase2, invalid_tx]);
+		block2.mine(u128::MAX);
+
+		let result = blockchain.update_with_block(block2);
+		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_blockchain_valid_transaction_chain() {
+		let mut blockchain = Blockchain::new_with_diff(u128::MAX);
+
+		// Add genesis block
+		let coinbase = Transaction {
+			inputs: vec![],
+			outputs: vec![
+				create_output("Alice", 1.5, 1000),
+				create_output("Bob", 0.5, 1000),
+			],
+		};
+		let mut genesis = Block::new(0, 1000, vec![0; 32], vec![coinbase.clone()]);
+		genesis.mine(u128::MAX);
+		blockchain.update_with_block(genesis.clone()).unwrap();
+
+		// Create valid transaction spending Alice's output
+		let coinbase2 = Transaction {
+			inputs: vec![],
+			outputs: vec![create_output("Miner", 2.0, 2000)],
+		};
+		let alice_output = coinbase.outputs[0].clone();
+		let valid_tx = Transaction {
+			inputs: vec![alice_output],
+			outputs: vec![create_output("Charlie", 1.4, 2001)],
+		};
+		let mut block2 = Block::new(1, 2000, genesis.hash.clone(), vec![coinbase2, valid_tx]);
+		block2.mine(u128::MAX);
+
+		let result = blockchain.update_with_block(block2);
+		assert!(result.is_ok());
+		assert_eq!(blockchain.blocks.len(), 2);
+	}
+
+	#[test]
+	fn test_blockchain_utxo_tracking() {
+		let mut blockchain = Blockchain::new_with_diff(u128::MAX);
+
+		// Add genesis block
+		let coinbase = Transaction {
+			inputs: vec![],
+			outputs: vec![
+				create_output("Alice", 1.5, 1000),
+				create_output("Bob", 0.5, 1000),
+			],
+		};
+		let mut genesis = Block::new(0, 1000, vec![0; 32], vec![coinbase.clone()]);
+		genesis.mine(u128::MAX);
+		blockchain.update_with_block(genesis.clone()).unwrap();
+
+		// Spend Alice's output
+		let coinbase2 = Transaction {
+			inputs: vec![],
+			outputs: vec![create_output("Miner", 2.0, 2000)],
+		};
+		let alice_output = coinbase.outputs[0].clone();
+		let tx1 = Transaction {
+			inputs: vec![alice_output.clone()],
+			outputs: vec![create_output("Charlie", 1.4, 2001)],
+		};
+		let mut block2 = Block::new(1, 2000, genesis.hash.clone(), vec![coinbase2, tx1]);
+		block2.mine(u128::MAX);
+		blockchain.update_with_block(block2.clone()).unwrap();
+
+		// Try to double-spend Alice's output
+		let coinbase3 = Transaction {
+			inputs: vec![],
+			outputs: vec![create_output("Miner", 2.0, 3000)],
+		};
+		let tx2 = Transaction {
+			inputs: vec![alice_output], // Already spent
+			outputs: vec![create_output("Dave", 1.4, 3001)],
+		};
+		let mut block3 = Block::new(2, 3000, block2.hash.clone(), vec![coinbase3, tx2]);
+		block3.mine(u128::MAX);
+
+		let result = blockchain.update_with_block(block3);
+		assert!(result.is_err()); // Should fail because output is already spent
+	}
+
+	#[test]
+	fn test_blockchain_coinbase_with_fees() {
+		let mut blockchain = Blockchain::new_with_diff(u128::MAX);
+
+		// Add genesis block
+		let coinbase = Transaction {
+			inputs: vec![],
+			outputs: vec![
+				create_output("Alice", 1.5, 1000),
+				create_output("Bob", 0.5, 1000),
+			],
+		};
+		let mut genesis = Block::new(0, 1000, vec![0; 32], vec![coinbase.clone()]);
+		genesis.mine(u128::MAX);
+		blockchain.update_with_block(genesis.clone()).unwrap();
+
+		// Create transaction with fee (1.5 input, 1.4 output, 0.1 fee)
+		let alice_output = coinbase.outputs[0].clone();
+		let tx_with_fee = Transaction {
+			inputs: vec![alice_output],
+			outputs: vec![create_output("Charlie", 1.4, 2001)],
+		};
+
+		// Coinbase can claim the fee
+		let coinbase2 = Transaction {
+			inputs: vec![],
+			outputs: vec![
+				create_output("Miner", 1.9, 2000), // 2.0 base - 0.1 (less than fee available)
+				create_output("MinerExtra", 0.1, 2000),
+			],
+		};
+
+		let mut block2 = Block::new(1, 2000, genesis.hash.clone(), vec![coinbase2, tx_with_fee]);
+		block2.mine(u128::MAX);
+
+		let result = blockchain.update_with_block(block2);
+		assert!(result.is_ok());
 	}
 }
