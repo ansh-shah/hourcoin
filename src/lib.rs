@@ -1,11 +1,29 @@
 type BlockHash = Vec<u8>;
 type Address = String;
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use chrono::Utc;
 
+pub mod leap_seconds;
+pub use leap_seconds::{now_tai_millis, utc_to_tai_millis, tai_to_utc_millis, is_near_leap_second};
+
+/// Get current time in TAI milliseconds since UNIX epoch
+///
+/// Uses TAI (International Atomic Time) which is monotonically increasing
+/// and does not have leap seconds, ensuring:
+/// - Time never goes backwards
+/// - No duplicate timestamps
+/// - Consistent consensus across nodes
+/// - Platform-agnostic precision via chrono
+///
+/// TAI is currently 37 seconds ahead of UTC (as of 2017-01-01 leap second)
 pub fn now() -> u128 {
-	let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-	duration.as_secs() as u128 * 1000 + duration.subsec_millis() as u128
+	now_tai_millis() as u128
+}
+
+/// Get current UTC time in milliseconds (for display/logging purposes)
+/// For consensus-critical timing, use now() which returns TAI
+pub fn now_utc() -> u128 {
+	Utc::now().timestamp_millis() as u128
 }
 
 pub fn u32_bytes (u: &u32) -> [u8; 4] {
@@ -82,3 +100,16 @@ mod blockchain;
 pub use crate::blockchain::Blockchain;
 pub mod transaction;
 pub use crate::transaction::Transaction;
+
+// Proof of Time modules
+pub mod time_sync;
+pub mod tonce;
+pub mod validator;
+
+// Network modules
+pub mod network;
+
+pub use crate::time_sync::TimeSync;
+pub use crate::tonce::{TonceChallenge, find_valid_timestamp};
+pub use crate::validator::{Validator, MinerSession, ValidationResult, RoundInfo};
+pub use crate::network::{ValidatorServer, MinerClient};
